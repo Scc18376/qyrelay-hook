@@ -54,6 +54,8 @@ jobs:
                 -O2 \
                 -I"$SDK/usr/include" \
                 -F"$SDK/System/Library/Frameworks" \
+                -Wl,-platform_version,ios,15.0,16.5 \
+                -Wl,-arch,arm64 \
                 -framework Foundation \
                 -framework UIKit \
                 -o QyRelayHook.dylib \
