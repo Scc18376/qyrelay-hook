@@ -189,29 +189,31 @@ static void QRInstallHeaderHooks(void) {
         if (![cn hasPrefix:@"TVK"] && ![cn hasPrefix:@"QL"] && ![cn hasPrefix:@"MLV"]) continue;
 
         for (int k = 0; k < 4; k++) {
-            Method m = class_getInstanceMethod(c, sels[k]);
+            SEL curSel = sels[k];
+            Method m = class_getInstanceMethod(c, curSel);
             if (!m) continue;
             const char *types = method_getTypeEncoding(m);
+            if (!types) continue;
             IMP orig = method_getImplementation(m);
 
-            if (types && types[0] == 'v') {          // setter: 注入后转原实现
+            if (types[0] == 'v') {          // setter: 注入后转原实现
                 IMP ni = imp_implementationWithBlock(^(id self, NSMutableDictionary *d) {
                     if ([d isKindOfClass:[NSMutableDictionary class]]) {
                         d[@"X-Local-Device-Id"] = QRLocalId();
                     }
-                    ((void(*)(id, SEL, id))orig)(self, sels[k], d);
+                    ((void(*)(id, SEL, id))orig)(self, curSel, d);
                 });
-                class_replaceMethod(c, sels[k], ni, types);
+                class_replaceMethod(c, curSel, ni, types);
                 hooked++;
-            } else if (types && types[0] == '@') {   // getter: 返回前补
+            } else if (types[0] == '@') {    // getter: 返回前补
                 IMP ni = imp_implementationWithBlock(^id(id self) {
-                    id r = ((id(*)(id, SEL))orig)(self, sels[k]);
+                    id r = ((id(*)(id, SEL))orig)(self, curSel);
                     if ([r isKindOfClass:[NSMutableDictionary class]]) {
                         r[@"X-Local-Device-Id"] = QRLocalId();
                     }
                     return r;
                 });
-                class_replaceMethod(c, sels[k], ni, types);
+                class_replaceMethod(c, curSel, ni, types);
                 hooked++;
             }
         }
