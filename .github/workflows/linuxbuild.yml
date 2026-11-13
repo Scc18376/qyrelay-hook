@@ -68,6 +68,28 @@ jobs:
             echo "编译失败，无产物"
           fi
 
+      - name: Install ldid and sign dylib
+        run: |
+          if [ -f QyRelayHook.dylib ]; then
+            curl -sL -o /tmp/ldid "https://github.com/ProcursusTeam/ldid/releases/latest/download/ldid_linux_x86_64" || true
+            chmod +x /tmp/ldid 2>/dev/null || true
+            /tmp/ldid -S QyRelayHook.dylib 2>&1 | head -5 || echo "ldid sign failed"
+            echo "--- 签名检查 ---"
+            python3 -c "
+import struct
+d=open('QyRelayHook.dylib','rb').read()
+n=struct.unpack_from('<I',d,16)[0];o=32
+for i in range(n):
+    c,sz=struct.unpack_from('<II',d,o)
+    if c==0x1d:
+        do,ds=struct.unpack_from('<II',d,o+8)
+        print(f'LC_CODE_SIGNATURE dataoff={do:#x} size={ds:#x} filesize={len(d):#x}')
+        break
+    o+=sz
+else: print('NO SIGNATURE')
+"
+          fi
+
       - name: Upload dylib
         uses: actions/upload-artifact@v4
         if: always()
