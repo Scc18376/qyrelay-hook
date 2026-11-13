@@ -1,0 +1,53 @@
+name: Build dylib on Linux
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'QyRelayHook.m'
+      - '.github/workflows/build.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cross toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            clang lld llvm libobjc-11-dev libblocksruntime-dev \
+            libgnustep-base-dev cmake make unzip curl xz-utils
+          clang --version
+          ld.lld --version
+
+      - name: Fetch iOS SDK headers (iphoneos sysroot)
+        run: |
+          # 用 theos 的 headers + tvOS/iOS SDK 镜像
+          mkdir -p $HOME/sdk
+          cd $HOME/sdk
+          # 尝试下载公开的 iOS SDK 镜像
+          curl -sL -o sdk.tar.xz \
+            "https://github.com/theos/sdks/releases/download/master/iPhoneOS16.5.sdk.tar.xz" \
+            -w 'dl http=%{http_code} size=%{size_download}\n' || true
+          ls -lh sdk.tar.xz 2>/dev/null || echo "下载失败"
+          file sdk.tar.xz 2>/dev/null || true
+          if tar -tf sdk.tar.xz >/dev/null 2>&1; then
+            tar xf sdk.tar.xz
+            echo "SDK 解包成功"
+            ls -d *.sdk
+          else
+            echo "SDK 不可用，跳过"
+          fi
+
+      - name: Report environment
+        run: |
+          echo "=== 可用 SDK ==="
+          ls -d $HOME/sdk/*.sdk 2>/dev/null || echo none
+          echo "=== clang targets ==="
+          clang --print-targets | grep -iE 'aarch64|arm' | head -5
+          echo "=== llvm 工具 ==="
+          ls /usr/lib/llvm-*/bin/ 2>/dev/null | grep -E 'ld64|lld|llvm-objdump' | head -5
