@@ -16,7 +16,7 @@
 #import <objc/message.h>
 #import <UIKit/UIKit.h>
 #import <sys/sysctl.h>
-#import <sys/ptrace.h>
+#import <dlfcn.h>
 
 // ============================================================ 配置
 // 编译期注入，或由 /var/mobile/.qyrelay.conf 覆盖
