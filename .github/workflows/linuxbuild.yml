@@ -24,6 +24,7 @@ jobs:
       - name: Fetch iPhoneOS SDK
         run: |
           mkdir -p $HOME/sdk && cd $HOME/sdk
+          sudo apt-get install -y -qq lld-$(ls /usr/lib/llvm-* -d | head -1 | grep -oE '[0-9]+$') 2>/dev/null || true
           curl -sL -o sdk.tar.xz \
             "https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz" \
             -w 'download http=%{http_code} bytes=%{size_download}\n'
@@ -41,7 +42,10 @@ jobs:
         run: |
           SDK=$HOME/sdk/iPhoneOS16.5.sdk
           echo "=== 开始编译 ==="
+          LD64=$(ls /usr/lib/llvm-*/bin/ld64.lld 2>/dev/null | head -1)
+          echo "ld64.lld = $LD64"
           clang -arch arm64 \
+                -fuse-ld="$LD64" \
                 -target arm64-apple-ios15.0 \
                 -isysroot "$SDK" \
                 -dynamiclib \
