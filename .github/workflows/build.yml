@@ -1,0 +1,78 @@
+name: Build QyRelayHook dylib
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'QyRelayHook.m'
+      - '.github/workflows/**'
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+          xcrun --sdk iphoneos --show-sdk-version
+          clang --version
+
+      - name: Verify source exists
+        run: |
+          ls -la
+          test -f QyRelayHook.m && echo "source OK"
+
+      - name: Build arm64 dylib
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          echo "SDK=$SDK"
+          xcrun --sdk iphoneos clang \
+            -arch arm64 \
+            -miphoneos-version-min=15.0 \
+            -isysroot "$SDK" \
+            -dynamiclib \
+            -fobjc-arc \
+            -O2 \
+            -framework Foundation \
+            -framework UIKit \
+            -o QyRelayHook.dylib \
+            QyRelayHook.m
+          echo "--- built ---"
+          file QyRelayHook.dylib
+          lipo -info QyRelayHook.dylib
+          otool -L QyRelayHook.dylib | head -20
+          ls -lh QyRelayHook.dylib
+
+      - name: Ad-hoc sign for inspection
+        run: |
+          codesign -f -s - QyRelayHook.dylib || true
+          codesign -dv QyRelayHook.dylib 2>&1 | head -10 || true
+
+      - name: Verify Mach-O
+        run: |
+          echo "=== load commands ==="
+          otool -hv QyRelayHook.dylib
+          echo "=== exported symbols ==="
+          nm -gU QyRelayHook.dylib 2>/dev/null | head -20 || true
+          echo "=== dylib id ==="
+          otool -D QyRelayHook.dylib
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: QyRelayHook-dylib
+          path: |
+            QyRelayHook.dylib
+          retention-days: 30
+
+      - name: Upload source copy
+        uses: actions/upload-artifact@v4
+        with:
+          name: source
+          path: QyRelayHook.m
+          retention-days: 30

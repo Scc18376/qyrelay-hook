@@ -1,0 +1,6 @@
+*.ipa
+*.dylib
+*.p12
+*.mobileprovision
+Payload/
+work/
