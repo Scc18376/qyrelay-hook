@@ -6,48 +6,67 @@ on:
     branches: [ main ]
     paths:
       - 'QyRelayHook.m'
-      - '.github/workflows/build.yml'
+      - '.github/workflows/linuxbuild.yml'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install cross toolchain
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            clang lld llvm libobjc-11-dev libblocksruntime-dev \
-            libgnustep-base-dev cmake make unzip curl xz-utils
-          clang --version
-          ld.lld --version
+          sudo apt-get install -y -qq clang lld llvm libblocksruntime-dev || true
+          echo "clang: $(clang --version | head -1)"
+          ls /usr/lib/llvm-*/bin/ld64.lld 2>/dev/null || which ld64.lld || true
 
-      - name: Fetch iOS SDK headers (iphoneos sysroot)
+      - name: Fetch iPhoneOS SDK
         run: |
-          # 用 theos 的 headers + tvOS/iOS SDK 镜像
-          mkdir -p $HOME/sdk
-          cd $HOME/sdk
-          # 尝试下载公开的 iOS SDK 镜像
+          mkdir -p $HOME/sdk && cd $HOME/sdk
           curl -sL -o sdk.tar.xz \
-            "https://github.com/theos/sdks/releases/download/master/iPhoneOS16.5.sdk.tar.xz" \
-            -w 'dl http=%{http_code} size=%{size_download}\n' || true
-          ls -lh sdk.tar.xz 2>/dev/null || echo "下载失败"
-          file sdk.tar.xz 2>/dev/null || true
-          if tar -tf sdk.tar.xz >/dev/null 2>&1; then
-            tar xf sdk.tar.xz
-            echo "SDK 解包成功"
-            ls -d *.sdk
+            "https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz" \
+            -w 'download http=%{http_code} bytes=%{size_download}\n'
+          tar xf sdk.tar.xz
+          ls -d *.sdk
+          echo "--- objc headers ---"
+          ls $HOME/sdk/iPhoneOS16.5.sdk/usr/include/objc 2>/dev/null | head -5 || echo "no objc headers"
+          echo "--- frameworks ---"
+          ls $HOME/sdk/iPhoneOS16.5.sdk/System/Library/Frameworks/Foundation.framework 2>/dev/null | head -3 || echo "no Foundation"
+          ls $HOME/sdk/iPhoneOS16.5.sdk/System/Library/Frameworks/UIKit.framework 2>/dev/null | head -3 || echo "no UIKit"
+          echo "--- libSystem ---"
+          ls $HOME/sdk/iPhoneOS16.5.sdk/usr/lib/libSystem.tbd 2>/dev/null || echo "no libSystem.tbd"
+
+      - name: Compile dylib
+        run: |
+          SDK=$HOME/sdk/iPhoneOS16.5.sdk
+          echo "=== 开始编译 ==="
+          clang -arch arm64 \
+                -target arm64-apple-ios15.0 \
+                -isysroot "$SDK" \
+                -dynamiclib \
+                -fobjc-arc \
+                -fblocks \
+                -O2 \
+                -I"$SDK/usr/include" \
+                -F"$SDK/System/Library/Frameworks" \
+                -framework Foundation \
+                -framework UIKit \
+                -o QyRelayHook.dylib \
+                QyRelayHook.m 2>&1 | head -50 || true
+          echo "=== 结果 ==="
+          if [ -f QyRelayHook.dylib ]; then
+            file QyRelayHook.dylib
+            ls -lh QyRelayHook.dylib
           else
-            echo "SDK 不可用，跳过"
+            echo "编译失败，无产物"
           fi
 
-      - name: Report environment
-        run: |
-          echo "=== 可用 SDK ==="
-          ls -d $HOME/sdk/*.sdk 2>/dev/null || echo none
-          echo "=== clang targets ==="
-          clang --print-targets | grep -iE 'aarch64|arm' | head -5
-          echo "=== llvm 工具 ==="
-          ls /usr/lib/llvm-*/bin/ 2>/dev/null | grep -E 'ld64|lld|llvm-objdump' | head -5
+      - name: Upload dylib
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-output
+          path: |
+            QyRelayHook.dylib
+          if-no-files-found: warn
